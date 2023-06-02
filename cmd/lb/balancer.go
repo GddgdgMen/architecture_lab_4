@@ -31,9 +31,9 @@ type Server struct {
 var (
 	timeout     = time.Duration(*timeoutSec) * time.Second
 	serversPool = []Server{
-		Server{address: "server1:8080"},
-		Server{address: "server2:8080"},
-		Server{address: "server3:8080"},
+		{address: "server1:8080"},
+		{address: "server2:8080"},
+		{address: "server3:8080"},
 	}
 )
 
