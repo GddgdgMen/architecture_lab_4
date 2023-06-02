@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/roman-mazur/design-practice-2-template/httptools"
@@ -14,19 +15,25 @@ import (
 )
 
 var (
-	port = flag.Int("port", 8090, "load balancer port")
+	port       = flag.Int("port", 8090, "load balancer port")
 	timeoutSec = flag.Int("timeout-sec", 3, "request timeout time in seconds")
-	https = flag.Bool("https", false, "whether backends support HTTPs")
+	https      = flag.Bool("https", false, "whether backends support HTTPs")
 
 	traceEnabled = flag.Bool("trace", false, "whether to include tracing information into responses")
 )
 
+type Server struct {
+	address string
+	connCnt int
+	mu      sync.Mutex
+}
+
 var (
-	timeout = time.Duration(*timeoutSec) * time.Second
-	serversPool = []string{
-		"server1:8080",
-		"server2:8080",
-		"server3:8080",
+	timeout     = time.Duration(*timeoutSec) * time.Second
+	serversPool = []Server{
+		Server{address: "server1:8080"},
+		Server{address: "server2:8080"},
+		Server{address: "server3:8080"},
 	}
 )
 
@@ -88,8 +95,8 @@ func main() {
 	flag.Parse()
 
 	// TODO: Використовуйте дані про стан сервреа, щоб підтримувати список тих серверів, яким можна відправляти ззапит.
-	for _, server := range serversPool {
-		server := server
+	for i := range serversPool {
+		server := serversPool[i].address
 		go func() {
 			for range time.Tick(10 * time.Second) {
 				log.Println(server, health(server))
@@ -98,12 +105,44 @@ func main() {
 	}
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// TODO: Рееалізуйте свій алгоритм балансувальника.
-		forward(serversPool[0], rw, r)
+		serverIndex := min(serversPool, func(a *Server, b *Server) bool {
+			a.mu.Lock()
+			b.mu.Lock()
+			defer a.mu.Unlock()
+			defer b.mu.Unlock()
+			return a.connCnt < b.connCnt
+		})
+		chosenServer := &serversPool[serverIndex]
+
+		chosenServer.mu.Lock()
+		chosenServer.connCnt++
+		chosenServer.mu.Unlock()
+
+		forward(chosenServer.address, rw, r)
+
+		chosenServer.mu.Lock()
+		chosenServer.connCnt--
+		chosenServer.mu.Unlock()
 	}))
 
 	log.Println("Starting load balancer...")
 	log.Printf("Tracing support enabled: %t", *traceEnabled)
 	frontend.Start()
 	signal.WaitForTerminationSignal()
+}
+
+func min(serversPool []Server, cmpFn func(*Server, *Server) bool) int {
+	if len(serversPool) == 0 {
+		log.Fatal("There are no servers in server pool!")
+	}
+
+	minimumIndex := 0
+
+	for i := 1; i < len(serversPool); i++ {
+		if cmpFn(&serversPool[i], &serversPool[minimumIndex]) {
+			minimumIndex = i
+		}
+	}
+
+	return minimumIndex
 }
