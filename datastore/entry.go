@@ -10,6 +10,14 @@ type entry struct {
 	key, value string
 }
 
+func getLength(key string, value string) int64 {
+	return int64(len(key) + len(value) + 12)
+}
+
+func (e *entry) GetLength() int64 {
+	return getLength(e.key, e.value)
+}
+
 func (e *entry) Encode() []byte {
 	kl := len(e.key)
 	vl := len(e.value)
