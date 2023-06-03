@@ -30,14 +30,14 @@ func (s *IntegrationTestSuite) TestGetRequest() {
 		s.T().Skip("Integration test is not enabled")
 	}
 
-	servers := []string{"server1:8080", "server2:8080", "server3:8080"}
-	serverCount := len(servers)
+	//servers := []string{"server1:8080", "server2:8080", "server3:8080"}
+	//serverCount := len(servers)
 
 	for i := 0; i < 10; i++ {
-		resp, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
+		_, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
 		assert.NoError(s.T(), err)
 
-		expectedServer := servers[i%serverCount]
+		//expectedServer := servers[i%serverCount]
 		//assert.Equal(s.T(), expectedServer, resp.Header.Get("lb-from"))
 	}
 }
