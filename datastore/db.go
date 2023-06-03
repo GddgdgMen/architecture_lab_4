@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 const (
@@ -324,4 +325,23 @@ func (s *Segment) getFromSegment(position int64) (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+func (db *Db) GetInt64(key string) (int64, error) {
+	valueStr, err := db.Get(key)
+	if err != nil {
+		return 0, err
+	}
+
+	valueInt, err := strconv.ParseInt(valueStr, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return valueInt, nil
+}
+
+func (db *Db) PutInt64(key string, value int64) error {
+	valueStr := strconv.FormatInt(value, 10)
+	return db.Put(key, valueStr)
 }

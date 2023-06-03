@@ -7,7 +7,7 @@ import (
 )
 
 func TestEntry_Encode(t *testing.T) {
-	e := entry{"key", "value"}
+	e := entry{"key", "value", "type"}
 	e.Decode(e.Encode())
 	if e.key != "key" {
 		t.Error("incorrect key")
@@ -15,10 +15,13 @@ func TestEntry_Encode(t *testing.T) {
 	if e.value != "value" {
 		t.Error("incorrect value")
 	}
+	if e.dataType != "type" {
+		t.Error("wrong type")
+	}
 }
 
 func TestReadValue(t *testing.T) {
-	e := entry{"key", "test-value"}
+	e := entry{"key", "test-value", "type"}
 	data := e.Encode()
 	v, err := readValue(bufio.NewReader(bytes.NewReader(data)))
 	if err != nil {
