@@ -10,6 +10,7 @@ import (
 
 func TestDb_Put(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test-db")
+	dirInt64, err := ioutil.TempDir("", "test-db-Int64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,16 +22,48 @@ func TestDb_Put(t *testing.T) {
 	}
 	defer db.Close()
 
+	dbInt64, err := NewDb(dirInt64, 45)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
 	pairs := [][]string{
 		{"1", "a"},
 		{"2", "b"},
 		{"3", "c"},
 	}
 
+	type int64Data struct {
+		key   string
+		value int64
+	}
+
+	pairsInt64 := []int64Data{
+		{"6", int64(123)},
+		{"7", int64(234)},
+	}
+
 	outFile, err := os.Open(filepath.Join(dir, outFileName+"0"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("put/get int64", func(t *testing.T) {
+		for _, pair := range pairsInt64 {
+			err := dbInt64.PutInt64(pair.key, pair.value)
+			if err != nil {
+				t.Errorf("Cannot put %s: %s", pair.key, err)
+			}
+			value, err := dbInt64.GetInt64(pair.key)
+			if err != nil {
+				t.Errorf("Cannot get %s: %s", pair.key, err)
+			}
+			if value != pair.value {
+				t.Errorf("Bad value returned expected %d, got %d", pair.value, value)
+			}
+		}
+	})
 
 	t.Run("put/get", func(t *testing.T) {
 		for _, pair := range pairs {
@@ -82,7 +115,7 @@ func TestDb_Put(t *testing.T) {
 		for _, pair := range pairs {
 			value, err := db.Get(pair[0])
 			if err != nil {
-				t.Errorf("Cannot put %s: %s", pairs[0], err)
+				t.Errorf("Cannot get %s: %s", pair, err)
 			}
 			if value != pair[1] {
 				t.Errorf("Bad value returned expected %s, got %s", pair[1], value)
@@ -105,10 +138,10 @@ func TestDb_Segmentation(t *testing.T) {
 	defer db.Close()
 
 	t.Run("new file", func(t *testing.T) {
-		db.Put("1", "v1")
-		db.Put("2", "v2")
-		db.Put("3", "v3")
-		db.Put("2", "v5")
+		db.Put("1", "a")
+		db.Put("2", "b")
+		db.Put("3", "c")
+		db.Put("2", "e")
 
 		actual := len(db.segments)
 		if actual != 2 {
@@ -117,7 +150,7 @@ func TestDb_Segmentation(t *testing.T) {
 	})
 
 	t.Run("starting segmentation", func(t *testing.T) {
-		db.Put("4", "v4")
+		db.Put("4", "44")
 		actual := len(db.segments)
 
 		if actual != 3 {
@@ -135,8 +168,8 @@ func TestDb_Segmentation(t *testing.T) {
 	t.Run("new values", func(t *testing.T) {
 		actual, _ := db.Get("2")
 
-		if actual != "v5" {
-			t.Errorf("Bad segmentation. Expected value: v5, Actual one: %s", actual)
+		if actual != "e" {
+			t.Errorf("Bad segmentation. Expected value: e, Actual one: %s", actual)
 		}
 	})
 

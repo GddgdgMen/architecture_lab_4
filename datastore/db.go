@@ -291,13 +291,50 @@ func (db *Db) Get(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if value[len(value)-1:] != "s" {
+		return "", fmt.Errorf("invalid data type")
+	}
+	value = value[:len(value)-1]
 	return value, nil
 }
 
 func (db *Db) Put(key, value string) error {
 	e := entry{
 		key:   key,
-		value: value,
+		value: value + "s",
+	}
+	db.putOps <- e
+	return <-db.putDone
+}
+
+func (db *Db) GetInt64(key string) (int64, error) {
+	keyPos := db.getPos(key)
+	if keyPos == nil {
+		return int64(0), ErrNotFound
+	}
+	valueStr, err := keyPos.segment.getFromSegment(keyPos.position)
+	if err != nil {
+		return int64(0), err
+	}
+
+	if valueStr[len(valueStr)-1:] != "i" {
+		return int64(0), fmt.Errorf("invalid data type")
+	}
+	valueStr = valueStr[:len(valueStr)-1]
+
+	valueInt, err := strconv.ParseInt(valueStr, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return valueInt, nil
+}
+
+func (db *Db) PutInt64(key string, value int64) error {
+	valueStr := strconv.FormatInt(value, 10)
+	e := entry{
+		key:   key,
+		value: valueStr + "i",
 	}
 	db.putOps <- e
 	return <-db.putDone
@@ -325,23 +362,4 @@ func (s *Segment) getFromSegment(position int64) (string, error) {
 		return "", err
 	}
 	return value, nil
-}
-
-func (db *Db) GetInt64(key string) (int64, error) {
-	valueStr, err := db.Get(key)
-	if err != nil {
-		return 0, err
-	}
-
-	valueInt, err := strconv.ParseInt(valueStr, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return valueInt, nil
-}
-
-func (db *Db) PutInt64(key string, value int64) error {
-	valueStr := strconv.FormatInt(value, 10)
-	return db.Put(key, valueStr)
 }
