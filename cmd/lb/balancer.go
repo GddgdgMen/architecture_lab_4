@@ -126,36 +126,20 @@ func main() {
 		}
 
 		onlineServersMutex.Lock()
-		log.Printf("1 Before: ")
-		for e := onlineServers.Front(); e != nil; e = e.Next() {
-			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
-		}
 		serverElement := onlineServers.Front()
 		onlineServers.MoveToBack(serverElement)
 		serverElement.Value.(*Server).connCnt++
-		log.Printf("1 After: ")
-		for e := onlineServers.Front(); e != nil; e = e.Next() {
-			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
-		}
 		onlineServersMutex.Unlock()
 
 		forward(serverElement.Value.(*Server).address, rw, r)
 
 		onlineServersMutex.Lock()
-		log.Printf("2 Before: ")
-		for e := onlineServers.Front(); e != nil; e = e.Next() {
-			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
-		}
 		serverElement.Value.(*Server).connCnt--
 		for e := onlineServers.Front(); e != nil && e != serverElement; e = e.Next() {
 			if e.Value.(*Server).connCnt >= serverElement.Value.(*Server).connCnt {
 				onlineServers.MoveBefore(serverElement, e)
 				break
 			}
-		}
-		log.Printf("2 After: ")
-		for e := onlineServers.Front(); e != nil; e = e.Next() {
-			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
 		}
 		onlineServersMutex.Unlock()
 	}))
