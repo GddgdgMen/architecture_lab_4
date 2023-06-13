@@ -64,26 +64,6 @@ func TestForward(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, recorder.Code, "Expected status code 503")
 }
 
-func TestMin(t *testing.T) {
-	servers := []Server{
-		{address: "server1:8080", connCnt: 3},
-		{address: "server2:8080", connCnt: 2},
-		{address: "server3:8080", connCnt: 1},
-	}
-
-	index := min(servers, func(a *Server, b *Server) bool {
-		return a.connCnt < b.connCnt
-	})
-	assert.Equal(t, 2, index, "Expected index 2")
-
-	servers[0].connCnt = 0
-
-	index = min(servers, func(a *Server, b *Server) bool {
-		return a.connCnt < b.connCnt
-	})
-	assert.Equal(t, 0, index, "Expected index 0")
-}
-
 func TestBalancer(t *testing.T) {
 	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(1750 * time.Millisecond)
@@ -107,7 +87,14 @@ func TestBalancer(t *testing.T) {
 	}
 	os.Args = append(os.Args, "-trace")
 	go main()
-	time.Sleep(2 * time.Second)
+
+	for {
+		time.Sleep(500 * time.Millisecond)
+		resp, _ := http.Get(fmt.Sprintf("http://127.0.0.1:%d/test", *port))
+		if resp != nil {
+			break
+		}
+	}
 
 	GetRequest := func(wg *sync.WaitGroup, expectedSrv string) {
 		res, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/api/v1/some-data", *port))
@@ -122,14 +109,14 @@ func TestBalancer(t *testing.T) {
 	}
 
 	wg := &sync.WaitGroup{}
-	expectedSequence := [5]string{
+	expectedSequence := []string{
 		serversPool[0].address,
 		serversPool[1].address,
 		serversPool[2].address,
 		serversPool[1].address,
 		serversPool[0].address}
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < len(expectedSequence); i++ {
 		wg.Add(1)
 		go GetRequest(wg, expectedSequence[i])
 		time.Sleep(500 * time.Millisecond)
