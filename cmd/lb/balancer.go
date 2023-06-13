@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"context"
 	"flag"
 	"fmt"
@@ -23,9 +24,10 @@ var (
 )
 
 type Server struct {
-	address string
-	connCnt int
-	mu      sync.Mutex
+	address        string
+	connCnt        int
+	isServerOnline bool
+	element        *list.Element
 }
 
 var (
@@ -35,6 +37,8 @@ var (
 		{address: "server2:8080"},
 		{address: "server3:8080"},
 	}
+	onlineServers      = list.New()
+	onlineServersMutex sync.Mutex
 )
 
 func scheme() string {
@@ -94,55 +98,70 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 func main() {
 	flag.Parse()
 
-	// TODO: Використовуйте дані про стан сервреа, щоб підтримувати список тих серверів, яким можна відправляти ззапит.
+	healthCheckUp := func(server *Server) {
+		isServerOnline := health(server.address)
+		if isServerOnline && !server.isServerOnline {
+			server.element = onlineServers.PushBack(server)
+		} else if !isServerOnline && server.isServerOnline {
+			onlineServers.Remove(server.element)
+		}
+
+		log.Println(server.address, isServerOnline)
+	}
+
 	for i := range serversPool {
-		server := serversPool[i].address
+		server := &serversPool[i]
+		healthCheckUp(server)
 		go func() {
 			for range time.Tick(10 * time.Second) {
-				log.Println(server, health(server))
+				healthCheckUp(server)
 			}
 		}()
 	}
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		serverIndex := min(serversPool, func(a *Server, b *Server) bool {
-			a.mu.Lock()
-			b.mu.Lock()
-			defer a.mu.Unlock()
-			defer b.mu.Unlock()
-			return a.connCnt < b.connCnt
-		})
-		chosenServer := &serversPool[serverIndex]
+		if onlineServers.Front() == nil {
+			rw.WriteHeader(http.StatusBadGateway)
+			return
+		}
 
-		chosenServer.mu.Lock()
-		chosenServer.connCnt++
-		chosenServer.mu.Unlock()
+		onlineServersMutex.Lock()
+		log.Printf("1 Before: ")
+		for e := onlineServers.Front(); e != nil; e = e.Next() {
+			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
+		}
+		serverElement := onlineServers.Front()
+		onlineServers.MoveToBack(serverElement)
+		serverElement.Value.(*Server).connCnt++
+		log.Printf("1 After: ")
+		for e := onlineServers.Front(); e != nil; e = e.Next() {
+			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
+		}
+		onlineServersMutex.Unlock()
 
-		forward(chosenServer.address, rw, r)
+		forward(serverElement.Value.(*Server).address, rw, r)
 
-		chosenServer.mu.Lock()
-		chosenServer.connCnt--
-		chosenServer.mu.Unlock()
+		onlineServersMutex.Lock()
+		log.Printf("2 Before: ")
+		for e := onlineServers.Front(); e != nil; e = e.Next() {
+			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
+		}
+		serverElement.Value.(*Server).connCnt--
+		for e := onlineServers.Front(); e != nil && e != serverElement; e = e.Next() {
+			if e.Value.(*Server).connCnt >= serverElement.Value.(*Server).connCnt {
+				onlineServers.MoveBefore(serverElement, e)
+				break
+			}
+		}
+		log.Printf("2 After: ")
+		for e := onlineServers.Front(); e != nil; e = e.Next() {
+			log.Printf("%s %d", e.Value.(*Server).address, e.Value.(*Server).connCnt)
+		}
+		onlineServersMutex.Unlock()
 	}))
 
 	log.Println("Starting load balancer...")
 	log.Printf("Tracing support enabled: %t", *traceEnabled)
 	frontend.Start()
 	signal.WaitForTerminationSignal()
-}
-
-func min(serversPool []Server, cmpFn func(*Server, *Server) bool) int {
-	if len(serversPool) == 0 {
-		log.Fatal("There are no servers in server pool!")
-	}
-
-	minimumIndex := 0
-
-	for i := 1; i < len(serversPool); i++ {
-		if cmpFn(&serversPool[i], &serversPool[minimumIndex]) {
-			minimumIndex = i
-		}
-	}
-
-	return minimumIndex
 }
