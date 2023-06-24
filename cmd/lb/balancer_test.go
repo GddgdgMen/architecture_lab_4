@@ -123,3 +123,62 @@ func TestBalancer(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func BenchmarkBalancer(b *testing.B) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server1.Close()
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server2.Close()
+	server3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server3.Close()
+
+	serversPool = []Server{
+		{address: server1.Listener.Addr().String()},
+		{address: server2.Listener.Addr().String()},
+		{address: server3.Listener.Addr().String()},
+	}
+
+	go main()
+
+	for {
+		time.Sleep(500 * time.Millisecond)
+		resp, _ := http.Get(fmt.Sprintf("http://127.0.0.1:%d/test", *port))
+		if resp != nil {
+			break
+		}
+	}
+
+	GetRequest := func(wg *sync.WaitGroup) {
+		_, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/api/v1/some-data", *port))
+
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		wg.Done()
+	}
+
+	wg := &sync.WaitGroup{}
+
+	b.Run("parallel", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			wg.Add(1)
+			go GetRequest(wg)
+		}
+		wg.Wait()
+	})
+
+	b.Run("sync", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			wg.Add(1)
+			GetRequest(wg)
+		}
+	})
+
+}
