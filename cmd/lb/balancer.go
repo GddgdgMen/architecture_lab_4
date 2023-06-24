@@ -21,6 +21,9 @@ var (
 	https      = flag.Bool("https", false, "whether backends support HTTPs")
 
 	traceEnabled = flag.Bool("trace", false, "whether to include tracing information into responses")
+
+	ComplexityCount = 0
+	IterationsCount = 0
 )
 
 type Server struct {
@@ -80,7 +83,7 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 		if *traceEnabled {
 			rw.Header().Set("lb-from", dst)
 		}
-		log.Println("fwd", resp.StatusCode, resp.Request.URL)
+		//log.Println("fwd", resp.StatusCode, resp.Request.URL)
 		rw.WriteHeader(resp.StatusCode)
 		defer resp.Body.Close()
 		_, err := io.Copy(rw, resp.Body)
@@ -112,12 +115,19 @@ func main() {
 	for i := range serversPool {
 		server := &serversPool[i]
 		healthCheckUp(server)
-		go func() {
-			for range time.Tick(10 * time.Second) {
-				healthCheckUp(server)
-			}
-		}()
 	}
+
+	go func() {
+		for i := range serversPool {
+			time.Sleep(100 * time.Millisecond)
+			server := &serversPool[i]
+			go func() {
+				for range time.Tick(10 * time.Second) {
+					healthCheckUp(server)
+				}
+			}()
+		}
+	}()
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		if onlineServers.Front() == nil {
@@ -136,16 +146,19 @@ func main() {
 		onlineServersMutex.Lock()
 		serverElement.Value.(*Server).connCnt--
 		for e := onlineServers.Front(); e != nil && e != serverElement; e = e.Next() {
+			ComplexityCount++
 			if e.Value.(*Server).connCnt >= serverElement.Value.(*Server).connCnt {
 				onlineServers.MoveBefore(serverElement, e)
 				break
 			}
 		}
+		IterationsCount++
 		onlineServersMutex.Unlock()
 	}))
 
 	log.Println("Starting load balancer...")
 	log.Printf("Tracing support enabled: %t", *traceEnabled)
 	frontend.Start()
+	port = frontend.GetPort()
 	signal.WaitForTerminationSignal()
 }

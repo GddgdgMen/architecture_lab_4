@@ -8,8 +8,8 @@ on:
 
 jobs:
   build-and-test:
-     runs-on: ubuntu-latest
-     steps:
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Update packages and module
@@ -26,6 +26,6 @@ jobs:
       - name: Build Docker image
         run: docker build -t app .
       - name: Running unit tests
-        run: go test -v ./... -bench=.
+        run: go test -v ./... -bench=. -benchtime=8000x
       - name: Running integration test
         run: docker-compose -f docker-compose.yaml -f docker-compose.test.yaml up --exit-code-from test

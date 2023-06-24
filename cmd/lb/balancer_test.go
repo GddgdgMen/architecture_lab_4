@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -85,7 +85,9 @@ func TestBalancer(t *testing.T) {
 		{address: server2.Listener.Addr().String()},
 		{address: server3.Listener.Addr().String()},
 	}
-	os.Args = append(os.Args, "-trace")
+
+	*traceEnabled = true
+
 	go main()
 
 	for {
@@ -126,7 +128,7 @@ func TestBalancer(t *testing.T) {
 
 func BenchmarkBalancer(b *testing.B) {
 	serversPool = []Server{}
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 3000; i++ {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -135,6 +137,8 @@ func BenchmarkBalancer(b *testing.B) {
 	}
 
 	time.Sleep(5000 * time.Millisecond)
+
+	*port = 0
 
 	go main()
 
@@ -166,11 +170,20 @@ func BenchmarkBalancer(b *testing.B) {
 		wg.Wait()
 	})
 
+	average := float64(ComplexityCount / IterationsCount)
+	log.Printf("Complexity: O(%f)\n", average)
+
+	ComplexityCount = 0
+	IterationsCount = 0
+
 	b.Run("sync", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			wg.Add(1)
 			GetRequest(wg)
 		}
 	})
+
+	average = float64(ComplexityCount) / float64(IterationsCount)
+	log.Printf("Complexity: O(%f)\n", average)
 
 }
