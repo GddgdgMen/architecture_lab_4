@@ -1,14 +1,13 @@
 package main
 
 import (
-	"container/list"
+	"container/heap"
 	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/roman-mazur/design-practice-2-template/httptools"
@@ -30,18 +29,43 @@ type Server struct {
 	address        string
 	connCnt        int
 	isServerOnline bool
-	element        *list.Element
+}
+
+type ServerHeap []*Server
+
+func (h ServerHeap) Len() int {
+	ComplexityCount++
+	return len(h)
+}
+
+func (h ServerHeap) Less(i, j int) bool {
+	return h[i].connCnt < h[j].connCnt
+}
+
+func (h ServerHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
+
+func (h *ServerHeap) Push(x interface{}) {
+	*h = append(*h, x.(*Server))
+}
+
+func (h *ServerHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
 
 var (
 	timeout     = time.Duration(*timeoutSec) * time.Second
-	serversPool = []Server{
+	serversPool = []*Server{
 		{address: "server1:8080"},
 		{address: "server2:8080"},
 		{address: "server3:8080"},
 	}
-	onlineServers      = list.New()
-	onlineServersMutex sync.Mutex
+	onlineServers = make(ServerHeap, 0)
 )
 
 func scheme() string {
@@ -104,23 +128,32 @@ func main() {
 	healthCheckUp := func(server *Server) {
 		isServerOnline := health(server.address)
 		if isServerOnline && !server.isServerOnline {
-			server.element = onlineServers.PushBack(server)
+			heap.Push(&onlineServers, server)
 		} else if !isServerOnline && server.isServerOnline {
-			onlineServers.Remove(server.element)
+			serverIndex := -1
+			for i, s := range onlineServers {
+				if s == server {
+					serverIndex = i
+					break
+				}
+			}
+			if serverIndex != -1 {
+				heap.Remove(&onlineServers, serverIndex)
+			}
 		}
 
 		log.Println(server.address, isServerOnline)
 	}
 
 	for i := range serversPool {
-		server := &serversPool[i]
+		server := serversPool[i]
 		healthCheckUp(server)
 	}
 
 	go func() {
 		for i := range serversPool {
 			time.Sleep(100 * time.Millisecond)
-			server := &serversPool[i]
+			server := serversPool[i]
 			go func() {
 				for range time.Tick(10 * time.Second) {
 					healthCheckUp(server)
@@ -130,30 +163,19 @@ func main() {
 	}()
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		if onlineServers.Front() == nil {
+		if len(onlineServers) == 0 {
 			rw.WriteHeader(http.StatusBadGateway)
 			return
 		}
 
-		onlineServersMutex.Lock()
-		serverElement := onlineServers.Front()
-		onlineServers.MoveToBack(serverElement)
-		serverElement.Value.(*Server).connCnt++
-		onlineServersMutex.Unlock()
-
-		forward(serverElement.Value.(*Server).address, rw, r)
-
-		onlineServersMutex.Lock()
-		serverElement.Value.(*Server).connCnt--
-		for e := onlineServers.Front(); e != nil && e != serverElement; e = e.Next() {
-			ComplexityCount++
-			if e.Value.(*Server).connCnt >= serverElement.Value.(*Server).connCnt {
-				onlineServers.MoveBefore(serverElement, e)
-				break
-			}
-		}
+		heap.Fix(&onlineServers, 0)
 		IterationsCount++
-		onlineServersMutex.Unlock()
+		server := onlineServers[0]
+		server.connCnt++
+
+		forward(server.address, rw, r)
+
+		server.connCnt--
 	}))
 
 	log.Println("Starting load balancer...")

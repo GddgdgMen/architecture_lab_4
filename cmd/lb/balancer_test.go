@@ -80,7 +80,7 @@ func TestBalancer(t *testing.T) {
 	}))
 	defer server3.Close()
 
-	serversPool = []Server{
+	serversPool = []*Server{
 		{address: server1.Listener.Addr().String()},
 		{address: server2.Listener.Addr().String()},
 		{address: server3.Listener.Addr().String()},
@@ -115,8 +115,8 @@ func TestBalancer(t *testing.T) {
 		serversPool[0].address,
 		serversPool[1].address,
 		serversPool[2].address,
-		serversPool[1].address,
-		serversPool[0].address}
+		serversPool[2].address,
+		serversPool[2].address}
 
 	for i := 0; i < len(expectedSequence); i++ {
 		wg.Add(1)
@@ -127,13 +127,13 @@ func TestBalancer(t *testing.T) {
 }
 
 func BenchmarkBalancer(b *testing.B) {
-	serversPool = []Server{}
+	serversPool = []*Server{}
 	for i := 0; i < 3000; i++ {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer server.Close()
-		serversPool = append(serversPool, Server{address: server.Listener.Addr().String()})
+		serversPool = append(serversPool, &Server{address: server.Listener.Addr().String()})
 	}
 
 	time.Sleep(5000 * time.Millisecond)
@@ -170,7 +170,7 @@ func BenchmarkBalancer(b *testing.B) {
 		wg.Wait()
 	})
 
-	average := float64(ComplexityCount / IterationsCount)
+	average := float64(ComplexityCount) / float64(IterationsCount)
 	log.Printf("Complexity: O(%f)\n", average)
 
 	ComplexityCount = 0
