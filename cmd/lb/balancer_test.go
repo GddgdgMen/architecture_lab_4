@@ -125,24 +125,16 @@ func TestBalancer(t *testing.T) {
 }
 
 func BenchmarkBalancer(b *testing.B) {
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server1.Close()
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server2.Close()
-	server3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server3.Close()
-
-	serversPool = []Server{
-		{address: server1.Listener.Addr().String()},
-		{address: server2.Listener.Addr().String()},
-		{address: server3.Listener.Addr().String()},
+	serversPool = []Server{}
+	for i := 0; i < 1000; i++ {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+		serversPool = append(serversPool, Server{address: server.Listener.Addr().String()})
 	}
+
+	time.Sleep(5000 * time.Millisecond)
 
 	go main()
 
